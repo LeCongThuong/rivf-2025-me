@@ -53,17 +53,17 @@ def make_balanced_loader(ds, batch_size=32, num_workers=4, balance=True):
 
 # ---------- your augmentation ----------
 class StepRotation:
-    def __init__(self, degrees: Tuple[int,int]=(-45,45), step: int=15):
+    def __init__(self, degrees: Tuple[int,int]=(-15,15), step: int=5):
         self.deg, self.step = degrees, step
     def __call__(self, img: Image.Image) -> Image.Image:
         angle = random.choice(range(self.deg[0], self.deg[1] + 1, self.step))
         return img.rotate(angle)
 
-def build_transforms(grayscale=True, train=True, target_size=(112,112)):
+def build_transforms(grayscale=True, train=True, target_size=(224,224)):
     aug = []
     if train:
         aug += [
-            StepRotation((-45, 45), 15),
+            StepRotation((-15, 15), 5),
             T.RandomHorizontalFlip(p=0.5),
             T.RandomApply([T.Lambda(lambda im: ImageOps.equalize(im))], p=0.2),
         ]
@@ -84,7 +84,7 @@ class CASMECSVDataset(Dataset):
         label_encoder: LabelEncoder,
         grayscale: bool = True,
         transform: Optional[Callable] = None,
-        target_size: Tuple[int,int] = (112,112),
+        target_size: Tuple[int,int] = (224,224),
         drop_missing: bool = True,
     ):
         self.images_dir = Path(images_dir)
@@ -134,7 +134,7 @@ def build_datasets_from_splits(
     valid_csv: str,
     images_dir: str,
     grayscale: bool = True,
-    target_size: Tuple[int,int] = (112,112),
+    target_size: Tuple[int,int] = (224,224),
 ):
     train_df, valid_df = load_splits(train_csv, valid_csv)
 

@@ -13,6 +13,8 @@ from torch.utils.tensorboard import SummaryWriter
 
 from model import LEARNet
 from data import build_datasets_from_splits, compute_class_weights as compute_class_weights_from_data
+from model_base import build_model
+
 
 
 # -------------------- Config --------------------
@@ -27,7 +29,7 @@ class Config:
 
     # data
     grayscale: bool = False           # RGB default
-    input_size: int = 112
+    input_size: int = 224
     num_workers: int = 4
     batch_size: int = 32
 
@@ -38,8 +40,8 @@ class Config:
     seed: int = 42
 
     # imbalance handling — pick ONE (recommended: weighted loss ON, sampler OFF)
-    use_class_weights: bool = True
-    balance_sampler: bool = False
+    use_class_weights: bool = False
+    balance_sampler: bool = True
 
     # scheduler
     use_cosine: bool = True
@@ -202,7 +204,8 @@ def main(cfg: Config):
     train_loader, valid_loader = make_loaders_from_datasets(cfg, train_ds, valid_ds, device)
 
     # Model / Loss / Optim / Sched
-    model = LEARNet(num_classes=num_classes).to(device)
+    # model = LEARNet(num_classes=num_classes).to(device)
+    model = build_model(num_classes=num_classes, pretrained=True).to(device)
 
     if cfg.use_class_weights:
         y_train = getattr(train_ds, "y")
@@ -256,22 +259,27 @@ def main(cfg: Config):
 
 
 if __name__ == "__main__":
-    cfg = Config(
-        train_csv="./artifacts/casme_split/fold_1/train.csv",
-        valid_csv="./artifacts/casme_split/fold_1/valid.csv",
-        images_dir="/media/hmi/Transcend1/CASMEV2/dynamic_images/",
-        outdir="./artifacts/learnNetmodels/checkpoints/",
-        log_dir="./artifacts/learnNetmodels/logs/",
-        grayscale=False,         
-        input_size=112,
-        num_workers=4,
-        batch_size=32,
-        lr=2e-3,
-        weight_decay=4e-5,
-        epochs=100,
-        seed=42,
-        use_class_weights=True, 
-        balance_sampler=False, 
-        use_cosine=True,
-    )
-    main(cfg)
+    base_dir = Path("./artifacts/casme_split")
+    for fold in range(1, 6): 
+        print(f"\n===== Training Fold {fold}/5 =====")
+        cfg = Config(
+            train_csv=str(base_dir / f"fold_{fold}/train.csv"),
+            valid_csv=str(base_dir / f"fold_{fold}/valid.csv"),
+            images_dir="/workspace/rivf-2025-me/media/CASMEV2/dynamic_images",
+            outdir=f"./artifacts/learnNetmodels/checkpoints/fold_{fold}",
+            log_dir=f"./artifacts/learnNetmodels/logs/fold_{fold}",
+            grayscale=False,
+            input_size=224,
+            num_workers=4,
+            batch_size=32,
+            lr=2e-3,
+            weight_decay=4e-5,
+            epochs=100,
+            seed=42,
+            use_class_weights=True,
+            balance_sampler=False,
+            use_cosine=True,
+        )
+
+        main(cfg)
+
