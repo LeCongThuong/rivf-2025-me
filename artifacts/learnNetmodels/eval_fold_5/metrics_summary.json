@@ -1,0 +1,45 @@
+{
+  "accuracy": 0.6078431372549019,
+  "macro": {
+    "precision": 0.6422710622710623,
+    "recall": 0.5815151515151515,
+    "f1": 0.5769432195711266
+  },
+  "micro": {
+    "precision": 0.6078431372549019,
+    "recall": 0.6078431372549019,
+    "f1": 0.6078431372549019
+  },
+  "weighted": {
+    "precision": 0.6338576456223515,
+    "recall": 0.6078431372549019,
+    "f1": 0.6025742474579684
+  },
+  "classes": [
+    "disgust",
+    "happiness",
+    "others",
+    "repression",
+    "surprise"
+  ],
+  "class_accuracy": {
+    "disgust": 0.75,
+    "happiness": 0.8333333333333334,
+    "others": 0.5909090909090909,
+    "repression": 0.3333333333333333,
+    "surprise": 0.4
+  },
+  "n_valid": 51,
+  "config": {
+    "valid_csv": "./artifacts/casme_split/fold_5/valid.csv",
+    "images_dir": "/workspace/rivf-2025-me/media/CASMEV2/dynamic_images",
+    "checkpoint": "./artifacts/learnNetmodels/checkpoints/fold_5/best_last.pth",
+    "outdir": "./artifacts/learnNetmodels/eval_fold_5",
+    "grayscale": false,
+    "input_size": 224,
+    "batch_size": 32,
+    "num_workers": 4,
+    "seed": 42
+  },
+  "checkpoint": "./artifacts/learnNetmodels/checkpoints/fold_5/best_last.pth"
+}

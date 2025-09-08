@@ -1,0 +1,45 @@
+{
+  "accuracy": 0.5882352941176471,
+  "macro": {
+    "precision": 0.6214833759590792,
+    "recall": 0.5057875457875458,
+    "f1": 0.5365656565656566
+  },
+  "micro": {
+    "precision": 0.5882352941176471,
+    "recall": 0.5882352941176471,
+    "f1": 0.5882352941176471
+  },
+  "weighted": {
+    "precision": 0.6266987613459706,
+    "recall": 0.5882352941176471,
+    "f1": 0.5879183996831056
+  },
+  "classes": [
+    "disgust",
+    "happiness",
+    "others",
+    "repression",
+    "surprise"
+  ],
+  "class_accuracy": {
+    "disgust": 0.5384615384615384,
+    "happiness": 0.42857142857142855,
+    "others": 0.7619047619047619,
+    "repression": 0.6,
+    "surprise": 0.2
+  },
+  "n_valid": 51,
+  "config": {
+    "valid_csv": "./artifacts/casme_split/fold_2/valid.csv",
+    "images_dir": "/workspace/rivf-2025-me/media/CASMEV2/dynamic_images",
+    "checkpoint": "./artifacts/learnNetmodels/checkpoints/fold_2/best_last.pth",
+    "outdir": "./artifacts/learnNetmodels/eval_fold_2",
+    "grayscale": false,
+    "input_size": 224,
+    "batch_size": 32,
+    "num_workers": 4,
+    "seed": 42
+  },
+  "checkpoint": "./artifacts/learnNetmodels/checkpoints/fold_2/best_last.pth"
+}

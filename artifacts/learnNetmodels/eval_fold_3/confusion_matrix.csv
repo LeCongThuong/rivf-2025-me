@@ -1,0 +1,6 @@
+,pred_disgust,pred_happiness,pred_others,pred_repression,pred_surprise
+true_disgust,10,1,1,0,1
+true_happiness,2,2,2,0,0
+true_others,4,3,14,0,1
+true_repression,0,2,0,3,0
+true_surprise,2,0,2,0,1
