@@ -15,7 +15,7 @@ from sklearn.metrics import (
     precision_recall_fscore_support,
 )
 
-from efficientnet_model import build_model
+from model.model_convnext import build_model
 # We’ll import your dataset + transforms so we can inject the checkpoint's LabelEncoder
 from data import CASMECSVDataset, build_transforms
 

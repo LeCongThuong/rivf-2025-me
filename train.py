@@ -11,9 +11,8 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from torch.utils.tensorboard import SummaryWriter
 
-from model import LEARNet
 from data import build_datasets_from_splits, compute_class_weights as compute_class_weights_from_data
-from efficientnet_model import build_model
+from model.model_dinov3 import build_model
 
 
 
@@ -243,7 +242,7 @@ def main(cfg: Config):
               f"{time.time()-t0:.1f}s")
 
         # Save best + last
-        if va_acc > best_acc:
+        if va_acc >= best_acc:
             best_acc = va_acc
             best_path = outdir / f"best_{best_acc:.4f}.pth"
             torch.save({"model": model.state_dict(),
