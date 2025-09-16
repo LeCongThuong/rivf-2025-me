@@ -15,9 +15,9 @@ from sklearn.metrics import (
     precision_recall_fscore_support,
 )
 
-from model.model_dinov3 import build_model
+from model.model_resnet_new import build_model
 # We’ll import your dataset + transforms so we can inject the checkpoint's LabelEncoder
-from data_cross import CASMECSVDataset, build_transforms
+from data_vector import CASMECSVDataset, build_transforms
 
 # -------------------- Config --------------------
 @dataclass
@@ -26,7 +26,7 @@ class Config:
     valid_csv: str = "./artifacts/casme_split/fold_1/valid.csv"
     images_dir: str = "/path/to/images"
     checkpoint: str = "./artifacts/learnNetmodels/checkpoints/best_0.9123.pth"
-
+    npy_dir : str ="./SMIRK_vector/CASME_SMIRK_weighted"
     # io
     outdir: str = "./artifacts/learnNetmodels/eval_fold_1"
 
@@ -84,13 +84,15 @@ def _load_valid_df(valid_csv: str) -> pd.DataFrame:
 def _build_valid_dataset(cfg: Config, classes_from_ckpt: list) -> CASMECSVDataset:
     df = _load_valid_df(cfg.valid_csv)
 
-    # Make a LabelEncoder that EXACTLY matches the checkpoint’s class order
+    # Make a LabelEncoder that EXACTLY matches the checkpoint's class order
     le = LabelEncoder()
     le.classes_ = np.array(classes_from_ckpt, dtype=object)  # preserve order
 
     tf = build_transforms(
         grayscale=cfg.grayscale, train=False, target_size=(cfg.input_size, cfg.input_size)
     )
+    
+    # Validation dataset KHÔNG dùng npy_dir (dùng vector 0)
     ds = CASMECSVDataset(
         df=df,
         images_dir=cfg.images_dir,
@@ -99,6 +101,7 @@ def _build_valid_dataset(cfg: Config, classes_from_ckpt: list) -> CASMECSVDatase
         transform=tf,
         target_size=(cfg.input_size, cfg.input_size),
         drop_missing=True,
+        npy_dir=cfg.npy_dir,  # QUAN TRỌNG: validation không dùng vector npy
     )
     return ds
 
@@ -150,12 +153,12 @@ def run_eval(cfg: Config):
         raise RuntimeError("Checkpoint missing 'classes' list. Re-train and save classes in the state dict.")
     num_classes = len(classes)
 
-    # 2) Build model and load weights
-    model = build_model(num_classes=num_classes).to(device)
+    # 2) Build model and load weights - THÊM extra_dim=53
+    model = build_model(num_classes=num_classes, extra_dim=53).to(device)
     model.load_state_dict(ckpt["model"], strict=True)
     model.eval()
 
-    # 3) Build valid dataset/loader with the SAME label mapping as training
+    # 3) Build valid dataset/loader với vector 0
     valid_ds = _build_valid_dataset(cfg, classes_from_ckpt=classes)
     gen = make_generator(cfg.seed)
     valid_loader = DataLoader(
@@ -171,40 +174,44 @@ def run_eval(cfg: Config):
     print(f"[eval] classes={classes}")
     print(f"[eval] valid samples (after missing filtered): {len(valid_ds)}")
 
-    # 4) Inference
+    # 4) Inference - XỬ LÝ 3 VALUES (image, vector, label)
     all_logits, all_preds, all_true = [], [], []
-    for xb, yb in valid_loader:
+    for batch in valid_loader:
+        xb, vb, yb = batch  # Validation có vector 0
         xb = xb.to(device, non_blocking=True)
+        vb = vb.to(device, non_blocking=True)  # Vector 0
         yb = yb.to(device, non_blocking=True)
-        logits = model(xb)
+        
+        # Model cần cả image và vector
+        logits, _ = model(xb, extra_vec=vb)
         preds = logits.argmax(1)
+        
         all_logits.append(logits.cpu())
         all_preds.append(preds.cpu())
         all_true.append(yb.cpu())
+    
     if not all_true:
         raise RuntimeError("No validation samples were loaded. Check your image paths/patterns.")
+    
     y_true = torch.cat(all_true).numpy()
     y_pred = torch.cat(all_preds).numpy()
 
-    # 5) Metrics
+    # 5) Metrics (giữ nguyên)
     acc = accuracy_score(y_true, y_pred)
-    # Per-class report
     report = classification_report(y_true, y_pred, target_names=classes, output_dict=True, zero_division=0)
-    # Global PRF
     p_macro, r_macro, f1_macro, _ = precision_recall_fscore_support(y_true, y_pred, average="macro", zero_division=0)
     p_micro, r_micro, f1_micro, _ = precision_recall_fscore_support(y_true, y_pred, average="micro", zero_division=0)
     p_weight, r_weight, f1_weight, _ = precision_recall_fscore_support(y_true, y_pred, average="weighted", zero_division=0)
     cm = confusion_matrix(y_true, y_pred, labels=list(range(num_classes)))
 
-    # 6) Save artifacts
-    # Confusion matrices
+    # 6) Save artifacts (giữ nguyên)
     _plot_confmat(cm, classes, out_png=outdir / "confusion_matrix.png", normalize=False)
     _plot_confmat(cm, classes, out_png=outdir / "confusion_matrix_normalized.png", normalize=True)
-    # CSVs
+    
     pd.DataFrame(cm, index=[f"true_{c}" for c in classes], columns=[f"pred_{c}" for c in classes])\
         .to_csv(outdir / "confusion_matrix.csv", index=True)
     pd.DataFrame(report).to_csv(outdir / "classification_report.csv")
-    # JSON summary
+    
     acc_per_class = cm.diagonal() / cm.sum(axis=1)
     acc_dict = {cls: float(acc_per_class[i]) for i, cls in enumerate(classes)}
     summary = {
@@ -221,7 +228,7 @@ def run_eval(cfg: Config):
     with open(outdir / "metrics_summary.json", "w") as f:
         json.dump(summary, f, indent=2)
 
-    # 7) Print a short summary
+    # 7) Print summary
     print("\n=== Evaluation Summary ===")
     print(f"Accuracy: {acc:.4f}")
     print(f"Macro F1: {f1_macro:.4f} | Micro F1: {f1_micro:.4f} | Weighted F1: {f1_weight:.4f}")
@@ -237,11 +244,12 @@ if __name__ == "__main__":
             images_dir="./media/CASMEV2/dynamic_images",
             checkpoint=f"./artifacts/learnNetmodels/checkpoints/fold_{fold}/best_last.pth",
             outdir=f"./artifacts/learnNetmodels/eval_fold_{fold}",
-            grayscale=False,      # RGB default
-            input_size=224,
+            grayscale=False,
+            input_size=224,  # Đảm bảo khớp với training
             batch_size=32,
             num_workers=4,
             seed=42,
+            npy_dir = "SMIRK_vector/CASME_SMIRK_gaussian"
         )
         print(f"=== Running eval for fold {fold} ===")
         run_eval(cfg)

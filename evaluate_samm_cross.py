@@ -15,7 +15,7 @@ from sklearn.metrics import (
     precision_recall_fscore_support,
 )
 
-from model.model_dinov3 import build_model
+from model.model_siglipv2 import build_model
 # We’ll import your dataset + transforms so we can inject the checkpoint's LabelEncoder
 from data_cross import CASMECSVDataset, build_transforms
 
@@ -231,17 +231,15 @@ def run_eval(cfg: Config):
 
 # -------------------- Run --------------------
 if __name__ == "__main__":
-    for fold in range(1, 6):
         cfg = Config(
-            valid_csv=f"./artifacts/casme_split/fold_{fold}/valid.csv",
+            valid_csv=f"data_csv/label_casme_goc_full.csv",
             images_dir="./media/CASMEV2/dynamic_images",
-            checkpoint=f"./artifacts/learnNetmodels/checkpoints/fold_{fold}/best_last.pth",
-            outdir=f"./artifacts/learnNetmodels/eval_fold_{fold}",
+            checkpoint=f"./artifacts/learnNetmodels/checkpoints/best_last.pth",
+            outdir=f"./artifacts/learnNetmodels/eval",
             grayscale=False,      # RGB default
             input_size=224,
             batch_size=32,
             num_workers=4,
             seed=42,
         )
-        print(f"=== Running eval for fold {fold} ===")
         run_eval(cfg)

@@ -27,22 +27,28 @@ def _extract_frame_number(seq: str) -> int:
     return int(m.group(1))
 
 
-def _resolve_path(num: int, images_dir: Path) -> Optional[Path]:
-    for p in [
-        images_dir / f"Seq_{num}.jpg",
-        images_dir / f"Seq{num}.jpg",
-        images_dir / f"Seq_{num:03d}.jpg",
-    ]:
-        if p.exists(): return p
+def _resolve_path(num: int, images_dir: Path, frame: Optional[int] = None) -> Optional[Path]:
+    """
+    Trả về Path của ảnh theo số sequence và frame.
+    Nếu frame=None, tìm ảnh duy nhất Seq_<num>.jpg
+    Nếu frame có số, tìm Seq_<num>_<frame>.jpg
+    """
+    candidates = []
+    if frame is not None:
+        candidates += [
+            images_dir / f"Seq_{num}_{frame:02d}.jpg",
+            images_dir / f"Seq{num}_{frame:02d}.jpg",
+        ]
+    else:
+        candidates += [
+            images_dir / f"Seq_{num}.jpg",
+            images_dir / f"Seq{num}.jpg",
+            images_dir / f"Seq_{num:03d}.jpg",
+        ]
+    for p in candidates:
+        if p.exists(): 
+            return p
     return None
-# def _resolve_path(num: int, num_frame: int ,images_dir: Path) -> Optional[Path]:
-#     for p in [
-#         images_dir / f"Seq_{num}_{num_frame:02d}.jpg",
-#         images_dir / f"Seq{num}_{num_frame:02d}.jpg",
-#         images_dir / f"Seq_{num:03d}_{num_frame:02d}.jpg",
-#     ]:
-#         if p.exists(): return p
-#     return None
 
 
 def compute_class_weights(y: np.ndarray, scheme: str = "inv_freq") -> torch.Tensor:
@@ -116,15 +122,16 @@ class CASMECSVDataset(Dataset):
         labels_str = df["label"].astype("string").str.strip().str.split().str[0].fillna("")
         samples, missing = [], 0
         for seq, lab in zip(df["Sequence"].astype(str), labels_str.astype(str)):
-            num = _extract_seq_number(seq)
-            # num_frame = _extract_frame_number(seq)
-            p = _resolve_path(num, self.images_dir)
-            # p = _resolve_path(num, num_frame, self.images_dir)
+            seq_num = _extract_seq_number(seq)
+            frame_num = _extract_frame_number(seq) if "_" in seq else None
+            p = _resolve_path(seq_num, self.images_dir, frame=frame_num)
             if p is None:
                 missing += 1
-                if self.drop_missing: continue
+                if self.drop_missing: 
+                    continue
                 raise FileNotFoundError(f"Image for {seq} not found in {self.images_dir}")
             samples.append((p, lab))
+
         if missing and self.drop_missing:
             print(f"[CASMECSVDataset] skipped {missing} rows (missing images).")
 
@@ -142,33 +149,48 @@ class CASMECSVDataset(Dataset):
         return x, y
 
 # ---------- builders ----------
-def load_splits(train_csv: str, valid_csv: str) -> Tuple[pd.DataFrame, pd.DataFrame]:
-    tdf = pd.read_csv(train_csv)[["Sequence","label"]].copy()
-    vdf = pd.read_csv(valid_csv)[["Sequence","label"]].copy()
-    # sanitize labels (already mapped upstream)
-    tdf["label"] = tdf["label"].astype("string").str.strip().str.split().str[0]
-    vdf["label"] = vdf["label"].astype("string").str.strip().str.split().str[0]
-    return tdf.reset_index(drop=True), vdf.reset_index(drop=True)
+def load_splits(train_csv: Optional[str] = None, valid_csv: Optional[str] = None) -> Tuple[Optional[pd.DataFrame], Optional[pd.DataFrame]]:
+    tdf, vdf = None, None
+    
+    if train_csv is not None:
+        tdf = pd.read_csv(train_csv)[["Sequence", "label"]].copy()
+        tdf["label"] = tdf["label"].astype("string").str.strip().str.split().str[0]
+        tdf = tdf.reset_index(drop=True)
+
+    if valid_csv is not None:
+        vdf = pd.read_csv(valid_csv)[["Sequence", "label"]].copy()
+        vdf["label"] = vdf["label"].astype("string").str.strip().str.split().str[0]
+        vdf = vdf.reset_index(drop=True)
+
+    return tdf, vdf
+from typing import Tuple, Optional
+import pandas as pd
+from sklearn.preprocessing import LabelEncoder
 
 def build_datasets_from_splits(
     train_csv: str,
     valid_csv: str,
-    images_dir: str,
+    images_train_dir: str,
+    images_test_dir: str,
     grayscale: bool = True,
     target_size: Tuple[int,int] = (112,112),
 ):
     train_df, valid_df = load_splits(train_csv, valid_csv)
 
-    # Fit ONE encoder on union so train/valid share the same id mapping
+    # Fit ONE encoder trên cả train + valid
     le = LabelEncoder().fit(pd.concat([train_df["label"], valid_df["label"]], axis=0))
 
-    train_tf = build_transforms(grayscale=grayscale, train=True,  target_size=target_size)
+    train_tf = build_transforms(grayscale=grayscale, train=True, target_size=target_size)
     valid_tf = build_transforms(grayscale=grayscale, train=False, target_size=target_size)
 
-    train_ds = CASMECSVDataset(train_df, images_dir, label_encoder=le,
-                               grayscale=grayscale, transform=train_tf, target_size=target_size)
-    valid_ds = CASMECSVDataset(valid_df, images_dir, label_encoder=le,
-                               grayscale=grayscale, transform=valid_tf, target_size=target_size)
+    train_ds = CASMECSVDataset(
+        train_df, images_train_dir, label_encoder=le,
+        grayscale=grayscale, transform=train_tf, target_size=target_size
+    )
+    valid_ds = CASMECSVDataset(
+        valid_df, images_test_dir, label_encoder=le,
+        grayscale=grayscale, transform=valid_tf, target_size=target_size
+    )
 
     meta = {
         "class_names": list(le.classes_),
@@ -177,6 +199,8 @@ def build_datasets_from_splits(
         "valid_size": len(valid_ds),
     }
     return train_ds, valid_ds, meta
+
+
 
 def build_loaders_from_splits(
     train_csv: str,

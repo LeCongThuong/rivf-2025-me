@@ -11,8 +11,8 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from torch.utils.tensorboard import SummaryWriter
 
-from data import build_datasets_from_splits, compute_class_weights as compute_class_weights_from_data
-from model.model_resnet import build_model
+from data_vector import build_datasets_from_splits, compute_class_weights as compute_class_weights_from_data
+from model.model_resnet_new import build_model
 
 
 
@@ -20,12 +20,12 @@ from model.model_resnet import build_model
 @dataclass
 class Config:
     # paths
-    train_csv: str = "./artifacts/casme_split/fold_1/train.csv"
-    valid_csv: str = "./artifacts/casme_split/fold_1/valid.csv"
-    images_dir: str = "/path/to/images"  # folder with Seq_*.jpg
+    train_csv: str = "./artifacts/casme_split_new/fold_1/train.csv"
+    valid_csv: str = "./artifacts/casme_split_new/fold_1/valid.csv"
+    images_dir: str = "/path/to/images"  
     outdir: str = "./artifacts/learnNetmodels/checkpoints/"
     log_dir: str = "./artifacts/learnNetmodels/logs/"
-
+    npy_dir: str = "./artifacts/learnNetmodels/logs/"
     # data
     grayscale: bool = False           # RGB default
     input_size: int = 224
@@ -150,12 +150,19 @@ def make_loaders_from_datasets(cfg: Config, train_ds, valid_ds, device: torch.de
 def train_one_epoch(model, criterion, optimizer, loader, device):
     model.train()
     run_loss, run_correct, n = 0.0, 0.0, 0
-    for xb, yb in loader:
-        xb = xb.to(device, non_blocking=True)
+
+    for batch in loader:
+        if len(batch) == 3:
+            xb, vb, yb = batch
+            vb = vb.to(device, non_blocking=True)
+            out, _ = model(xb.to(device, non_blocking=True), extra_vec=vb)
+        else:
+            xb, yb = batch
+            out, _ = model(xb.to(device, non_blocking=True))
+
         yb = yb.to(device, non_blocking=True)
 
         optimizer.zero_grad(set_to_none=True)
-        out = model(xb)
         loss = criterion(out, yb)
         loss.backward()
         optimizer.step()
@@ -163,21 +170,35 @@ def train_one_epoch(model, criterion, optimizer, loader, device):
         run_loss += loss.item() * xb.size(0)
         run_correct += (out.argmax(1) == yb).float().sum().item()
         n += xb.size(0)
+
     return run_loss / max(n, 1), run_correct / max(n, 1)
+
 
 @torch.no_grad()
 def evaluate(model, criterion, loader, device):
     model.eval()
     run_loss, run_correct, n = 0.0, 0.0, 0
-    for xb, yb in loader:
-        xb = xb.to(device, non_blocking=True)
+    
+    for batch in loader:
+        if len(batch) == 3:
+            xb, vb, yb = batch
+            xb = xb.to(device, non_blocking=True)
+            vb = vb.to(device, non_blocking=True)
+            out, _ = model(xb, extra_vec=vb)
+        else:
+            xb, yb = batch
+            xb = xb.to(device, non_blocking=True)
+            out, _ = model(xb)
+
         yb = yb.to(device, non_blocking=True)
-        out = model(xb)
         loss = criterion(out, yb)
+        
         run_loss += loss.item() * xb.size(0)
         run_correct += (out.argmax(1) == yb).float().sum().item()
         n += xb.size(0)
+    
     return run_loss / max(n, 1), run_correct / max(n, 1)
+
 
 
 # -------------------- Main --------------------
@@ -189,14 +210,17 @@ def main(cfg: Config):
 
     # Build datasets via your data.py
     train_ds, valid_ds, meta = build_datasets_from_splits(
-        train_csv=cfg.train_csv,
-        valid_csv=cfg.valid_csv,
-        images_dir=cfg.images_dir,
-        grayscale=cfg.grayscale,
-        target_size=(cfg.input_size, cfg.input_size),
-    )
+    train_csv=cfg.train_csv,
+    valid_csv=cfg.valid_csv,
+    images_dir=cfg.images_dir,
+    grayscale=cfg.grayscale,
+    npy_dir=cfg.npy_dir,
+    target_size=(cfg.input_size, cfg.input_size),
+)
+
     class_names = meta["class_names"]
     num_classes = meta["num_classes"]
+
     print(f"Classes ({num_classes}): {class_names}")
 
     # Deterministic loaders
@@ -204,7 +228,7 @@ def main(cfg: Config):
 
     # Model / Loss / Optim / Sched
     # model = LEARNet(num_classes=num_classes).to(device)
-    model = build_model(num_classes=num_classes, pretrained=True).to(device)
+    model = build_model(num_classes=num_classes, extra_dim=53).to(device)
 
     if cfg.use_class_weights:
         y_train = getattr(train_ds, "y")
@@ -242,12 +266,8 @@ def main(cfg: Config):
               f"{time.time()-t0:.1f}s")
 
         # Save best + last
-        if va_acc >= best_acc:
+        if (va_acc >= best_acc):
             best_acc = va_acc
-            best_path = outdir / f"best_{best_acc:.4f}.pth"
-            torch.save({"model": model.state_dict(),
-                        "classes": class_names,
-                        "config": asdict(cfg)}, best_path)
             torch.save({"model": model.state_dict(),
                     "classes": class_names,
                     "config": asdict(cfg)}, outdir / "best_last.pth")
@@ -262,11 +282,12 @@ if __name__ == "__main__":
     for fold in range(1, 6): 
         print(f"\n===== Training Fold {fold}/5 =====")
         cfg = Config(
-            train_csv=str(base_dir / f"fold_{fold}/train.csv"),
+            train_csv=str(base_dir / f"fold_{fold}/train_new.csv"),
             valid_csv=str(base_dir / f"fold_{fold}/valid.csv"),
             images_dir="./media/CASMEV2/dynamic_images",
             outdir=f"./artifacts/learnNetmodels/checkpoints/fold_{fold}",
             log_dir=f"./artifacts/learnNetmodels/logs/fold_{fold}",
+            npy_dir="./SMIRK_vector/CASME_SMIRK_gaussian",
             grayscale=False,
             input_size=224,
             num_workers=4,

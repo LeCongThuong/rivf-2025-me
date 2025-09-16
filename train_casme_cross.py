@@ -11,8 +11,8 @@ import torch.optim as optim
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from torch.utils.tensorboard import SummaryWriter
 
-from data import build_datasets_from_splits, compute_class_weights as compute_class_weights_from_data
-from model.model_resnet import build_model
+from data_cross import build_datasets_from_splits, compute_class_weights as compute_class_weights_from_data
+from model.model_dinov3 import build_model
 
 
 
@@ -20,9 +20,10 @@ from model.model_resnet import build_model
 @dataclass
 class Config:
     # paths
-    train_csv: str = "./artifacts/casme_split/fold_1/train.csv"
-    valid_csv: str = "./artifacts/casme_split/fold_1/valid.csv"
-    images_dir: str = "/path/to/images"  # folder with Seq_*.jpg
+    train_csv: str = "./artifacts/casme_split_new/fold_1/train.csv"
+    valid_csv: str = "./artifacts/casme_split_new/fold_1/valid.csv"
+    images_train_dir: str = "/path/to/images"  
+    images_test_dir: str = "/path/to/images" 
     outdir: str = "./artifacts/learnNetmodels/checkpoints/"
     log_dir: str = "./artifacts/learnNetmodels/logs/"
 
@@ -189,14 +190,17 @@ def main(cfg: Config):
 
     # Build datasets via your data.py
     train_ds, valid_ds, meta = build_datasets_from_splits(
-        train_csv=cfg.train_csv,
-        valid_csv=cfg.valid_csv,
-        images_dir=cfg.images_dir,
-        grayscale=cfg.grayscale,
-        target_size=(cfg.input_size, cfg.input_size),
-    )
+    train_csv=cfg.train_csv,
+    valid_csv=cfg.valid_csv,
+    images_train_dir=cfg.images_train_dir,
+    images_test_dir=cfg.images_test_dir,
+    grayscale=cfg.grayscale,
+    target_size=(cfg.input_size, cfg.input_size),
+)
+
     class_names = meta["class_names"]
     num_classes = meta["num_classes"]
+
     print(f"Classes ({num_classes}): {class_names}")
 
     # Deterministic loaders
@@ -204,7 +208,7 @@ def main(cfg: Config):
 
     # Model / Loss / Optim / Sched
     # model = LEARNet(num_classes=num_classes).to(device)
-    model = build_model(num_classes=num_classes, pretrained=True).to(device)
+    model = build_model(num_classes=num_classes).to(device)
 
     if cfg.use_class_weights:
         y_train = getattr(train_ds, "y")
@@ -242,12 +246,8 @@ def main(cfg: Config):
               f"{time.time()-t0:.1f}s")
 
         # Save best + last
-        if va_acc >= best_acc:
+        if (va_acc >= best_acc) and (epoch > 70):
             best_acc = va_acc
-            best_path = outdir / f"best_{best_acc:.4f}.pth"
-            torch.save({"model": model.state_dict(),
-                        "classes": class_names,
-                        "config": asdict(cfg)}, best_path)
             torch.save({"model": model.state_dict(),
                     "classes": class_names,
                     "config": asdict(cfg)}, outdir / "best_last.pth")
@@ -258,26 +258,24 @@ def main(cfg: Config):
 
 
 if __name__ == "__main__":
-    base_dir = Path("./artifacts/casme_split")
-    for fold in range(1, 6): 
-        print(f"\n===== Training Fold {fold}/5 =====")
-        cfg = Config(
-            train_csv=str(base_dir / f"fold_{fold}/train.csv"),
-            valid_csv=str(base_dir / f"fold_{fold}/valid.csv"),
-            images_dir="./media/CASMEV2/dynamic_images",
-            outdir=f"./artifacts/learnNetmodels/checkpoints/fold_{fold}",
-            log_dir=f"./artifacts/learnNetmodels/logs/fold_{fold}",
+    base_dir = Path("./data_csv")
+    cfg = Config(
+            train_csv=str(base_dir / f"label_casme_goc_full.csv"),
+            valid_csv=str(base_dir / f"label_sam_goc_full.csv"),
+            images_train_dir="./media/CASMEV2/dynamic_images",
+            images_test_dir="./media/SAMM/dynamic_images",
+            outdir=f"./artifacts/learnNetmodels/checkpoints/",
+            log_dir=f"./artifacts/learnNetmodels/logs/",
             grayscale=False,
             input_size=224,
             num_workers=4,
             batch_size=32,
             lr=2e-3,
             weight_decay=4e-5,
-            epochs=100,
+            epochs=150,
             seed=42,
             use_class_weights=True,
             balance_sampler=False,
             use_cosine=True,
         )
-
-        main(cfg)
+    main(cfg)
