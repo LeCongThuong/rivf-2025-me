@@ -15,7 +15,7 @@ from sklearn.metrics import (
     precision_recall_fscore_support,
 )
 
-from model.model_resnet_new import build_model
+from model.resnet import build_model
 # We’ll import your dataset + transforms so we can inject the checkpoint's LabelEncoder
 from data_vector import CASMECSVDataset, build_transforms
 
@@ -245,7 +245,7 @@ if __name__ == "__main__":
             checkpoint=f"./artifacts/learnNetmodels/checkpoints/fold_{fold}/best_last.pth",
             outdir=f"./artifacts/learnNetmodels/eval_fold_{fold}",
             grayscale=False,
-            input_size=224,  # Đảm bảo khớp với training
+            input_size=224,  
             batch_size=32,
             num_workers=4,
             seed=42,

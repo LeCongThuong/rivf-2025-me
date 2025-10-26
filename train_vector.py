@@ -4,7 +4,6 @@ from dataclasses import dataclass, asdict
 from pathlib import Path
 import os, time, random
 import numpy as np
-
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -12,7 +11,7 @@ from torch.utils.data import DataLoader, WeightedRandomSampler
 from torch.utils.tensorboard import SummaryWriter
 
 from data_vector import build_datasets_from_splits, compute_class_weights as compute_class_weights_from_data
-from model.model_resnet_new import build_model
+
 
 
 
@@ -27,7 +26,7 @@ class Config:
     log_dir: str = "./artifacts/learnNetmodels/logs/"
     npy_dir: str = "./artifacts/learnNetmodels/logs/"
     # data
-    grayscale: bool = False           # RGB default
+    grayscale: bool = False          
     input_size: int = 224
     num_workers: int = 4
     batch_size: int = 32
@@ -45,8 +44,6 @@ class Config:
     # scheduler
     use_cosine: bool = True
 
-
-# -------------------- Reproducibility --------------------
 def set_deterministic(seed: int = 0) -> None:
     """
     Force torch / numpy / python-random (and CUDA if present) to behave
@@ -300,5 +297,4 @@ if __name__ == "__main__":
             balance_sampler=False,
             use_cosine=True,
         )
-
         main(cfg)

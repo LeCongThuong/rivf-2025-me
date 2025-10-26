@@ -1,20 +1,13 @@
-# train.py
-# -*- coding: utf-8 -*-
 from dataclasses import dataclass, asdict
 from pathlib import Path
 import os, time, random
 import numpy as np
-
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import DataLoader, WeightedRandomSampler
 from torch.utils.tensorboard import SummaryWriter
-
 from data import build_datasets_from_splits, compute_class_weights as compute_class_weights_from_data
-from model.model_resnet import build_model
-
-
 
 # -------------------- Config --------------------
 @dataclass
@@ -25,7 +18,7 @@ class Config:
     images_dir: str = "/path/to/images"  # folder with Seq_*.jpg
     outdir: str = "./artifacts/learnNetmodels/checkpoints/"
     log_dir: str = "./artifacts/learnNetmodels/logs/"
-
+    model_name: str = "resnet"
     # data
     grayscale: bool = False           # RGB default
     input_size: int = 224
@@ -179,7 +172,37 @@ def evaluate(model, criterion, loader, device):
         n += xb.size(0)
     return run_loss / max(n, 1), run_correct / max(n, 1)
 
+def build_model_by_name(name: str, num_classes: int, pretrained: bool = True):
+    """
+    Dynamically import and build model depending on name.
+    """
+    name = name.lower()
+    if name == "resnet":
+        from model.resnet import build_model as build_resnet
+        return build_resnet(num_classes=num_classes, pretrained=pretrained)
+    elif name == "efficientnet":
+        from model.efficientnet import build_model as build_efficientnet
+        return build_efficientnet(num_classes=num_classes, pretrained=pretrained)
+    elif name == "vision_transformer":
+        from model.vision_transformer import build_model as build_vision_transformer
+        return build_vision_transformer(num_classes=num_classes, pretrained=pretrained)
+    elif name == "densenet":
+        from model.densenet import build_model as build_densenet
+        return build_densenet(num_classes=num_classes, pretrained=pretrained)
 
+    elif name == "siglipv2":
+        from model.siglipv2 import build_model as build_siglipv2
+        return build_siglipv2(num_classes=num_classes, pretrained=pretrained)
+
+    elif name == "radiov3":
+        from model.radiov3 import build_model as build_radiov3
+        return build_radiov3(num_classes=num_classes, pretrained=pretrained)
+
+    elif name == "dinov3":
+        from model.dinov3 import build_model as build_dinov3
+        return build_dinov3(num_classes=num_classes, pretrained=pretrained)
+    else:
+        raise ValueError(f"Unknown model name: {name}")
 # -------------------- Main --------------------
 def main(cfg: Config):
     set_deterministic(cfg.seed)
@@ -204,7 +227,7 @@ def main(cfg: Config):
 
     # Model / Loss / Optim / Sched
     # model = LEARNet(num_classes=num_classes).to(device)
-    model = build_model(num_classes=num_classes, pretrained=True).to(device)
+    model = build_model_by_name(cfg.model_name, num_classes=num_classes, pretrained=True).to(device)
 
     if cfg.use_class_weights:
         y_train = getattr(train_ds, "y")
@@ -256,7 +279,6 @@ def main(cfg: Config):
     print(f"\nBest val acc: {best_acc:.4f} | saved: {best_path}")
     print(f"TensorBoard: tensorboard --logdir {cfg.log_dir}")
 
-
 if __name__ == "__main__":
     base_dir = Path("./artifacts/casme_split")
     for fold in range(1, 6): 
@@ -267,6 +289,7 @@ if __name__ == "__main__":
             images_dir="./media/CASMEV2/dynamic_images",
             outdir=f"./artifacts/learnNetmodels/checkpoints/fold_{fold}",
             log_dir=f"./artifacts/learnNetmodels/logs/fold_{fold}",
+            model_name="efficientnet",
             grayscale=False,
             input_size=224,
             num_workers=4,
@@ -279,5 +302,4 @@ if __name__ == "__main__":
             balance_sampler=False,
             use_cosine=True,
         )
-
         main(cfg)

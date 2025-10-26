@@ -44,7 +44,6 @@ def _compute_dynamic_image(frames):
     # ARP coefficients: từ -(T-1) đến (T-1)
     coefficients = np.array([2 * (n + 1) - num_frames - 1 for n in range(num_frames)])
 
-    # Áp dụng trọng số cho từng frame
     x1 = np.expand_dims(frames, axis=0)                     # (1, T, H, W, C)
     x2 = np.reshape(coefficients, (num_frames, 1, 1, 1))    # (T, 1, 1, 1)
     result = x1 * x2                                        # Broadcasting theo trọng số
