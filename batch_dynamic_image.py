@@ -4,7 +4,7 @@ import pandas as pd
 from pathlib import Path
 import os
 import cv2
-from tqdm import tqdm 
+from tqdm import tqdm
 
 
 def load_image(path, image_size=(224, 224)):
@@ -23,7 +23,7 @@ def assign_coefficients(coefficients, apex_index):
 
     left = apex_index - 1
     right = apex_index + 1
-    coeff_index = 1  
+    coeff_index = 1
 
     while coeff_index < num_frames:
         if left >= 0 and coeff_index < num_frames:
@@ -42,12 +42,16 @@ def _compute_dynamic_image(frames):
     num_frames, h, w, depth = frames.shape
 
     # ARP coefficients: từ -(T-1) đến (T-1)
-    coefficients = np.array([2 * (n + 1) - num_frames - 1 for n in range(num_frames)])
+    coefficients = np.array(
+        [2 * (n + 1) - num_frames - 1 for n in range(num_frames)])
 
+    # Áp dụng trọng số cho từng frame
     x1 = np.expand_dims(frames, axis=0)                     # (1, T, H, W, C)
     x2 = np.reshape(coefficients, (num_frames, 1, 1, 1))    # (T, 1, 1, 1)
-    result = x1 * x2                                        # Broadcasting theo trọng số
+    # Broadcasting theo trọng số
+    result = x1 * x2
     return np.sum(result[0], axis=0).squeeze()              # (H, W, C)
+
 
 def get_dynamic_image(frames, normalized=True):
     """
@@ -56,16 +60,18 @@ def get_dynamic_image(frames, normalized=True):
     frames = np.array(frames)
     dynamic_image = _compute_dynamic_image(frames)
     if normalized:
-        dynamic_image = cv2.normalize(dynamic_image, None, 0, 255, norm_type=cv2.NORM_MINMAX)
+        dynamic_image = cv2.normalize(
+            dynamic_image, None, 0, 255, norm_type=cv2.NORM_MINMAX)
         dynamic_image = dynamic_image.astype('uint8')
 
     return dynamic_image
 
+
 if __name__ == "__main__":
     batch_img_seq_dir_path = "/media/hmi/Transcend1/CASMEV2/sequences/"
-    dest_path = "/media/hmi/Transcend1/CASMEV2/dynamic_images"   
+    dest_path = "/media/hmi/Transcend1/CASMEV2/dynamic_images"
     image_size = (112, 112)
-    
+
     Path(dest_path).mkdir(parents=True, exist_ok=True)
     seq_dir_list = Path(batch_img_seq_dir_path).glob('*')
     seq_dir_list = [str(p.name) for p in seq_dir_list if p.is_dir()]
@@ -76,10 +82,11 @@ if __name__ == "__main__":
         # use lambda func to extract number from image name
         # should resize image to (image_size, image_size)
         img_pat_list = Path(img_seq_dir_path).glob('*.jpg')
-        img_pat_list = sorted(img_pat_list, key=lambda x: int(x.stem.split('_')[-1]))
+        img_pat_list = sorted(
+            img_pat_list, key=lambda x: int(x.stem.split('_')[-1]))
         img_pat_list = [str(p) for p in img_pat_list]
-        images = [load_image(img_path, image_size) for img_path in img_pat_list if load_image(img_path) is not None]
+        images = [load_image(img_path, image_size)
+                  for img_path in img_pat_list if load_image(img_path) is not None]
         dynamic_image = get_dynamic_image(images)
         save_path = os.path.join(dest_path, seq_dir + '.jpg')
         cv2.imwrite(save_path, dynamic_image)
-

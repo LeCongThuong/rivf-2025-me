@@ -1,11 +1,3 @@
-"""
-Dataset label statistics + visualization (overlap-safe)
-- Reads CSV with columns: Sequence,label
-- Cleans labels (trim, keep first token)
-- Prints summary + imbalance ratio
-- Saves: label_stats.csv, barh & donut charts, class_weights.json
-"""
-
 import argparse
 import json
 from pathlib import Path
@@ -34,7 +26,8 @@ def compute_stats(df: pd.DataFrame) -> dict:
     imbalance_ratio = float(max_c) / float(min_c)
 
     stats_df = pd.DataFrame(
-        {"label": counts.index, "count": counts.values, "percent": (p.values * 100).round(2)}
+        {"label": counts.index, "count": counts.values,
+            "percent": (p.values * 100).round(2)}
     )
     return {
         "total": int(total),
@@ -71,14 +64,16 @@ def plot_barh_no_overlap(counts: pd.Series, out: Path, use_seaborn: bool = True)
     Horizontal bars + in-line count labels. Height auto-scales with #classes.
     """
     order = counts.sort_values(ascending=True)
-    height = max(3, 0.5 * len(order) + 1)  # scale figure to avoid y-tick collisions
+    # scale figure to avoid y-tick collisions
+    height = max(3, 0.5 * len(order) + 1)
     fig, ax = plt.subplots(figsize=(8, height))
 
     if use_seaborn:
         try:
             import seaborn as sns
             sns.set_theme(context="talk", style="whitegrid")
-            sns.barplot(x=order.values, y=order.index.astype(str), orient="h", ax=ax)
+            sns.barplot(x=order.values, y=order.index.astype(
+                str), orient="h", ax=ax)
         except Exception:
             ax.barh(order.index.astype(str), order.values)
     else:
@@ -88,7 +83,8 @@ def plot_barh_no_overlap(counts: pd.Series, out: Path, use_seaborn: bool = True)
     ax.set_ylabel("Label")
     # Annotate counts at end of bars
     for i, v in enumerate(order.values):
-        ax.text(v, i, f" {int(v)}", va="center", ha="left", fontsize=11, clip_on=False)
+        ax.text(v, i, f" {int(v)}", va="center",
+                ha="left", fontsize=11, clip_on=False)
     # Pad right so annotations don’t clip
     xmax = order.values.max()
     ax.set_xlim(0, xmax * 1.10)
@@ -119,7 +115,7 @@ def plot_donut_no_overlap(counts: pd.Series, out: Path, use_seaborn: bool = True
         autopct="%1.1f%%",
         startangle=90,
         pctdistance=0.75,   # move % toward center
-        labeldistance=1.10, # push labels outward
+        labeldistance=1.10,  # push labels outward
     )
     # Donut hole
     centre = plt.Circle((0, 0), 0.50, fc="white")
@@ -131,11 +127,16 @@ def plot_donut_no_overlap(counts: pd.Series, out: Path, use_seaborn: bool = True
 
 
 def main():
-    ap = argparse.ArgumentParser(description="Compute label statistics + visualize (overlap-safe)")
-    ap.add_argument("--csv", required=True, type=Path, help="Path to CSV with columns: Sequence,label")
-    ap.add_argument("--outdir", type=Path, default=Path("outputs"), help="Where to save artifacts")
-    ap.add_argument("--beta", type=float, default=0.99, help="Beta for effective number class-weights")
-    ap.add_argument("--seaborn", action="store_true", help="Use seaborn styling for plots")
+    ap = argparse.ArgumentParser(
+        description="Compute label statistics + visualize (overlap-safe)")
+    ap.add_argument("--csv", required=True, type=Path,
+                    help="Path to CSV with columns: Sequence,label")
+    ap.add_argument("--outdir", type=Path, default=Path("outputs"),
+                    help="Where to save artifacts")
+    ap.add_argument("--beta", type=float, default=0.99,
+                    help="Beta for effective number class-weights")
+    ap.add_argument("--seaborn", action="store_true",
+                    help="Use seaborn styling for plots")
     args = ap.parse_args()
 
     args.outdir.mkdir(parents=True, exist_ok=True)
@@ -168,7 +169,8 @@ def main():
     for lbl, c in res["counts"].items():
         print(f"  {lbl:>10s}: {c}")
 
-    print(f"\nSaved:\n  {stats_csv}\n  {bar_png}\n  {donut_png}\n  {weights_json}")
+    print(
+        f"\nSaved:\n  {stats_csv}\n  {bar_png}\n  {donut_png}\n  {weights_json}")
 
 
 if __name__ == "__main__":

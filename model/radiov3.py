@@ -1,114 +1,48 @@
+from build_projector import build_vision_projector
 import torch
 import torch.nn as nn
-import math
 
-class ModeruCNN(nn.Module):
-    def __init__(self, in_channels=768, num_classes=5, patch_grid: tuple = None):
+MODEL_NAME = "c-radio_v3-b"
+
+
+class CustomModel(nn.Module):
+    def __init__(self, num_classes: int, extra_dim: int = 0, pretrained: bool = True, projector_type: str = "mlp2x_gelu"):
         super().__init__()
-        self.patch_grid = patch_grid
-
-        self.conv1 = nn.Sequential(
-            nn.Conv2d(in_channels, 32, 3, 1, padding="same"),
-            nn.BatchNorm2d(32),
-            nn.ReLU(),
-            nn.MaxPool2d(2)
+        # Backbone RADIO
+        self.model_base = torch.hub.load(
+            'NVlabs/RADIO', 'radio_model',
+            version=MODEL_NAME, progress=True, skip_validation=True, pretrained=pretrained
         )
-        self.conv2 = nn.Sequential(
-            nn.Conv2d(32, 64, 3, 1, padding="same"),
-            nn.BatchNorm2d(64),
-            nn.ReLU(),
-            nn.MaxPool2d(2)
-        )
-        self.conv3 = nn.Sequential(
-            nn.Conv2d(64, 128, 3, 1, padding="same"),
-            nn.BatchNorm2d(128),
-            nn.ReLU(),
-            nn.MaxPool2d(2)
-        )
-        self.conv4 = nn.Sequential(
-            nn.Conv2d(128, 256, 3, 1, padding="same"),
-            nn.BatchNorm2d(256),
-            nn.ReLU(),
-        )
+        in_features = 2304
 
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.flatten = nn.Flatten()
-
-        self.fc1 = nn.Sequential(
-            nn.Dropout(0.3),
-            nn.Linear(256, 256),
-            nn.ReLU()
-        )
-        self.fc2 = nn.Linear(256, num_classes)
-
-    def forward(self, x):
-        """
-        x: patch features từ RADIO, shape (B, N, D)
-        """
-        if x.dim() == 2:
-            x = x.unsqueeze(1)  
-
-        B, N, D = x.shape
-        if self.patch_grid is not None:
-            h, w = self.patch_grid
-            assert h * w == N, f"patch_grid {self.patch_grid} không khớp với N={N}"
+        self.extra_dim = extra_dim
+        if extra_dim > 0:
+            self.extra_proj = build_vision_projector(
+                mm_hidden_size=extra_dim,
+                hidden_size=in_features,
+                projector_type=projector_type,
+            )
+            # self.extra_proj = nn.Sequential(
+            #     nn.BatchNorm1d(extra_dim),
+            #     nn.ReLU(inplace=True)
+            # )
+            self.in_features = in_features * 2
         else:
-            h = int(math.sqrt(N))
-            while N % h != 0:
-                h -= 1
-            w = N // h
+            self.extra_proj = None
+            self.in_features = in_features
 
-        x = x.transpose(1, 2).reshape(B, D, h, w)
+        self.classifier = nn.Linear(self.in_features, num_classes)
 
-        # CNN
-        x = self.conv1(x)
-        x = self.conv2(x)
-        x = self.conv3(x)
-        x = self.conv4(x)
+    def forward(self, x, extra_vec=None):
+        out = self.model_base(x)
+        feat = out[0] if isinstance(out, (tuple, list)) else out  # (B, 2304)
 
-        x = self.avgpool(x)
-        x = self.flatten(x)
-        x = self.fc1(x)
-        x = self.fc2(x)
-        return x
+        if self.extra_proj is not None and extra_vec is not None:
+            extra_feat = self.extra_proj(extra_vec)  # (B, 2304)
+            feat = torch.cat([feat, extra_feat], dim=1)
+
+        return self.classifier(feat)
 
 
-class RadioWithCNN(nn.Module):
-    def __init__(self, num_classes: int, freeze_backbone: bool = True, patch_grid: tuple = None):
-        super().__init__()
-        self.backbone = torch.hub.load(
-            'NVlabs/RADIO',
-            'radio_model',
-            version="c-radio_v3-b",
-            progress=True,
-            skip_validation=True
-        )
-
-        hidden_size = 768 
-        self.patch_grid = patch_grid
-
-        if freeze_backbone:
-            for param in self.backbone.parameters():
-                param.requires_grad = False
-        self.backbone.eval()
-        self.cnn_classifier = ModeruCNN(
-            in_channels=hidden_size,
-            num_classes=num_classes,
-            patch_grid=patch_grid
-        )
-
-    def forward(self, pixel_values):
-        outputs = self.backbone(pixel_values)
-        if hasattr(outputs, "__getitem__") and len(outputs) > 1:
-            patch_features = outputs[1]  
-        else:
-            raise ValueError("Không tìm thấy patch features từ RADIO output")
-
-        logits = self.cnn_classifier(patch_features)
-        return logits
-
-
-def build_model(num_classes: int, freeze_backbone: bool = True, patch_grid: tuple = None):
-    return RadioWithCNN(num_classes=num_classes, freeze_backbone=freeze_backbone, patch_grid=patch_grid)
-
-
+def build_model(num_classes: int, extra_dim: int = 0, pretrained: bool = True, projector_type: str = "mlp2x_gelu"):
+    return CustomModel(num_classes=num_classes, extra_dim=extra_dim, pretrained=pretrained, projector_type=projector_type)

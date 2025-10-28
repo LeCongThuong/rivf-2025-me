@@ -1,96 +1,45 @@
 import torch
 import torch.nn as nn
-from transformers import AutoModel
+from transformers import SiglipVisionModel
+from build_projector import build_vision_projector
+MODEL_NAME = "google/siglip2-base-patch16-224"
 
-class ModeruCNN(nn.Module):
-    def __init__(self, in_channels=768, num_classes=5, patch_grid: tuple = None):
+
+class CustomModel(nn.Module):
+    def __init__(self, num_classes: int, extra_dim: int = 0, model_name: str = MODEL_NAME, projector_type: str = "mlp2x_gelu"):
         super().__init__()
-        self.patch_grid = patch_grid
+        # Backbone SigLIP (vision-only)
+        self.model_base = SiglipVisionModel.from_pretrained(model_name)
+        in_features = self.model_base.config.hidden_size  # hidden dim
 
-        self.conv1 = nn.Sequential(
-            nn.Conv2d(in_channels, 32, 3, 1, padding="same"),
-            nn.BatchNorm2d(32),
-            nn.ReLU(),
-            nn.MaxPool2d(2)
-        )
-        self.conv2 = nn.Sequential(
-            nn.Conv2d(32, 64, 3, 1, padding="same"),
-            nn.BatchNorm2d(64),
-            nn.ReLU(),
-            nn.MaxPool2d(2)
-        )
-        self.conv3 = nn.Sequential(
-            nn.Conv2d(64, 128, 3, 1, padding="same"),
-            nn.BatchNorm2d(128),
-            nn.ReLU(),
-            nn.MaxPool2d(2)
-        )
-        self.conv4 = nn.Sequential(
-            nn.Conv2d(128, 256, 3, 1, padding="same"),
-            nn.BatchNorm2d(256),
-            nn.ReLU(),
-        )
-
-        self.avgpool = nn.AdaptiveAvgPool2d((1, 1))
-        self.flatten = nn.Flatten()
-
-        self.fc1 = nn.Sequential(
-            nn.Dropout(0.3),
-            nn.Linear(256, 256),
-            nn.ReLU()
-        )
-        self.fc2 = nn.Linear(256, num_classes)
-
-    def forward(self, x): 
-        B, N, D = x.shape
-
-        if self.patch_grid is not None:
-            h, w = self.patch_grid
-            assert h * w == N, f"patch_grid {self.patch_grid} không khớp với N={N}"
+        self.extra_dim = extra_dim
+        if extra_dim > 0:
+            self.extra_proj = build_vision_projector(
+                mm_hidden_size=extra_dim,
+                hidden_size=in_features,
+                projector_type=projector_type,
+            )
+            # self.extra_proj = nn.Sequential(
+            #     nn.BatchNorm1d(extra_dim),
+            #     nn.ReLU(inplace=True)
+            # )
+            self.in_features = in_features * 2
         else:
-            import math
-            h = int(math.sqrt(N))
-            while N % h != 0:
-                h -= 1
-            w = N // h
+            self.extra_proj = None
+            self.in_features = in_features
 
-        x = x.transpose(1, 2).reshape(B, D, h, w)  
+        self.classifier = nn.Linear(self.in_features, num_classes)
 
-        x = self.conv1(x)
-        x = self.conv2(x)
-        x = self.conv3(x)
-        x = self.conv4(x)
+    def forward(self, pixel_values: torch.Tensor, extra_vec: torch.Tensor = None):
+        outputs = self.model_base(pixel_values=pixel_values)
+        feat = outputs.pooler_output  # (B, hidden_size)
 
-        x = self.avgpool(x)
-        x = self.flatten(x)
-        x = self.fc1(x)
-        x = self.fc2(x)
-        return x
+        if self.extra_proj is not None and extra_vec is not None:
+            extra_feat = self.extra_proj(extra_vec)        # (B, hidden_size)
+            feat = torch.cat([feat, extra_feat], dim=1)    # (B, 2*hidden_size)
 
-class SiglipWithCNN(nn.Module):
-    def __init__(self, num_classes: int, pretrained_model_name: str = "google/siglip2-base-patch16-224", freeze_backbone: bool = True):
-        super().__init__()
-        self.backbone = AutoModel.from_pretrained(pretrained_model_name)
-
-        hidden_size = self.backbone.config.vision_config.hidden_size
-        image_size = self.backbone.config.vision_config.image_size
-        patch_size = self.backbone.config.vision_config.patch_size
-        h = image_size // patch_size
-        w = image_size // patch_size
-        patch_grid = (h, w)
-
-        if freeze_backbone:
-            for param in self.backbone.parameters():
-                param.requires_grad = False
-
-        self.cnn_classifier = ModeruCNN(in_channels=hidden_size, num_classes=num_classes, patch_grid=None)
-
-    def forward(self, pixel_values):
-        outputs = self.backbone.vision_model(pixel_values=pixel_values)
-        patch_features = outputs.last_hidden_state[:, 1:, :]  # (B, N, H)
-        logits = self.cnn_classifier(patch_features)
-        return logits
+        return self.classifier(feat)
 
 
-def build_model(num_classes: int, pretrained_model_name: str = "google/siglip2-base-patch16-224", freeze_backbone: bool = True):
-    return SiglipWithCNN(num_classes=num_classes, pretrained_model_name=pretrained_model_name, freeze_backbone=freeze_backbone)
+def build_model(num_classes: int, extra_dim: int = 0, model_name: str = MODEL_NAME, projector_type: str = "mlp2x_gelu"):
+    return CustomModel(num_classes=num_classes, extra_dim=extra_dim, model_name=model_name, projector_type=projector_type)

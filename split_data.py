@@ -4,6 +4,7 @@ from pathlib import Path
 import pandas as pd
 from sklearn.model_selection import StratifiedKFold
 
+
 def load_and_map(csv_path: Path) -> pd.DataFrame:
     df = pd.read_csv(csv_path)
 
@@ -22,6 +23,7 @@ def load_and_map(csv_path: Path) -> pd.DataFrame:
     df = df.drop_duplicates(subset=["Sequence"]).reset_index(drop=True)
 
     return df
+
 
 def stratified_kfold_save(df: pd.DataFrame, outdir: Path, n_splits: int = 5, seed: int = 42):
     outdir.mkdir(parents=True, exist_ok=True)
@@ -51,11 +53,16 @@ def stratified_kfold_save(df: pd.DataFrame, outdir: Path, n_splits: int = 5, see
         print("Valid counts:")
         print(valid_df["label"].value_counts().sort_index())
 
+
 def main():
-    ap = argparse.ArgumentParser(description="Make stratified 5-fold CSV splits (sadness/fear -> others).")
-    ap.add_argument("--input", required=True, type=Path, help="Path to input CSV with columns: Sequence,label")
-    ap.add_argument("--outdir", type=Path, default=Path("folds"), help="Output directory")
-    ap.add_argument("--n_splits", type=int, default=5, help="Number of folds (default 5)")
+    ap = argparse.ArgumentParser(
+        description="Make stratified 5-fold CSV splits (sadness/fear -> others).")
+    ap.add_argument("--input", required=True, type=Path,
+                    help="Path to input CSV with columns: Sequence,label")
+    ap.add_argument("--outdir", type=Path,
+                    default=Path("folds"), help="Output directory")
+    ap.add_argument("--n_splits", type=int, default=5,
+                    help="Number of folds (default 5)")
     ap.add_argument("--seed", type=int, default=42, help="Random seed")
     args = ap.parse_args()
 
@@ -63,8 +70,10 @@ def main():
     print("Label counts AFTER mapping sadness,fear -> others:")
     print(df["label"].value_counts().sort_index())
 
-    stratified_kfold_save(df, args.outdir, n_splits=args.n_splits, seed=args.seed)
+    stratified_kfold_save(
+        df, args.outdir, n_splits=args.n_splits, seed=args.seed)
     print(f"\nDone. Folds saved under: {args.outdir.resolve()}")
+
 
 if __name__ == "__main__":
     main()
