@@ -212,10 +212,10 @@ def run_eval(cfg: Config):
     outdir = Path(cfg.outdir)
     outdir.mkdir(parents=True, exist_ok=True)
     if cfg.use_vector:
-        from data_vector import CASMECSVDataset, build_transforms
+        from data.data_vector import CASMECSVDataset, build_transforms
         data_module = __import__("data_vector")
     else:
-        from data import CASMECSVDataset, build_transforms
+        from data.data import CASMECSVDataset, build_transforms
         data_module = __import__("data")
 
     # 1) Load checkpoint

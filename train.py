@@ -253,9 +253,9 @@ def main(cfg: Config):
     print("Device:", device)
     print("Config:", cfg)
     if cfg.use_vector:
-        from data_vector import build_datasets_from_splits, compute_class_weights as compute_class_weights_from_data
+        from data.data_vector import build_datasets_from_splits, compute_class_weights as compute_class_weights_from_data
     else:
-        from data import build_datasets_from_splits, compute_class_weights as compute_class_weights_from_data
+        from data.data import build_datasets_from_splits, compute_class_weights as compute_class_weights_from_data
 
     # Build datasets via your data.py
     if cfg.use_vector:
